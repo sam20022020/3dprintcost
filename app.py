@@ -1,9 +1,8 @@
-# Install dependencies before running:
-# pip install streamlit numpy-stl
-
+# requirements: streamlit, numpy-stl, numpy
 import streamlit as st
 from stl import mesh
 import numpy as np
+import tempfile
 
 def manual_calculator():
     st.header('Manual 3D Print Cost Calculator')
@@ -27,27 +26,29 @@ def stl_calculator():
     if uploaded_file is not None:
         st.write("Note: This method estimates filament use/weight based on model volume and selected print parameters. For exact slicing/print time, integrate with a slicer.")
 
-        # Slicing parameters
         layer_height = st.number_input("Layer height (mm)", min_value=0.05, max_value=1.0, value=0.2)
         infill = st.slider("Infill percentage", min_value=0, max_value=100, value=20)
         shell_count = st.number_input("Number of solid perimeters/shells", min_value=1, value=2)
-        filament_density = st.number_input("Filament density (g/cm³)", value=1.24) # PLA default
+        filament_density = st.number_input("Filament density (g/cm³)", value=1.24) # PLA by default
         filament_cost_kg = st.number_input("Filament cost per kg", min_value=0.0)
         print_time = st.number_input("Estimated print time (hours)", min_value=0.0)
         electricity_cost = st.number_input("Electricity cost per hour (optional)", min_value=0.0, value=0.0)
 
         if st.button("Estimate (from STL)"):
-            # Process STL for volume
-            stl_mesh = mesh.Mesh.from_file(uploaded_file)
+            # Write STL bytes to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp_file:
+                tmp_file.write(uploaded_file.read())
+                tmp_file_path = tmp_file.name
+            stl_mesh = mesh.Mesh.from_file(tmp_file_path)
             volume, _, _ = stl_mesh.get_mass_properties()
-            volume_cm3 = volume / 1000  # convert mm^3 to cm^3
+            volume_cm3 = volume / 1000  # from mm^3 to cm^3
 
-            # Basic estimate: infill reduces total plastic used, shells add back some
-            shell_vol_factor = 1 + (shell_count * 0.05)   # crude addition for shell walls
+            # Estimate for infill and shell (very basic)
+            shell_vol_factor = 1 + (shell_count * 0.05)
             infill_ratio = infill / 100.0
-            total_volume_cm3 = volume_cm3 * (infill_ratio + (1-infill_ratio)*0.25) * shell_vol_factor
+            estimated_volume_cm3 = volume_cm3 * (infill_ratio + (1-infill_ratio)*0.25) * shell_vol_factor
 
-            weight_g = total_volume_cm3 * filament_density
+            weight_g = estimated_volume_cm3 * filament_density
             filament_cost = (weight_g / 1000) * filament_cost_kg
             total_electricity = print_time * electricity_cost
             total_cost = filament_cost + total_electricity
