@@ -1,9 +1,8 @@
-# requirements: streamlit, numpy-stl, numpy, py3mf
+# requirements: streamlit, numpy-stl, numpy
 import streamlit as st
 from stl import mesh
 import numpy as np
 import tempfile
-import py3mf
 
 def manual_calculator():
     st.header('Manual 3D Print Cost Calculator')
@@ -28,27 +27,13 @@ def get_stl_volume(uploaded_file):
     volume_mm3, _, _ = stl_mesh.get_mass_properties()
     return volume_mm3
 
-def get_3mf_volume(uploaded_file):
-    # py3mf.Reader needs seekable file pointer, so reset if needed
-    uploaded_file.seek(0)
-    m = py3mf.Reader().read(uploaded_file)
-    total_volume_mm3 = 0.0
-    for obj in m.objects:
-        mesh_data = obj.mesh
-        for tri in mesh_data.triangles:
-            v1, v2, v3 = [mesh_data.vertices[i] for i in tri]
-            # Signed volume of tetrahedron (triangle and origin)
-            total_volume_mm3 += np.dot(v1, np.cross(v2, v3)) / 6.0
-    return abs(total_volume_mm3)
-
-def stl_3mf_calculator():
-    st.header('3D File-based 3D Print Cost Estimator (STL/3MF)')
-    uploaded_file = st.file_uploader("Upload STL or 3MF file", type=["stl", "3mf"])
+def stl_calculator():
+    st.header('STL-based 3D Print Cost Estimator')
+    uploaded_file = st.file_uploader("Upload STL file", type=["stl"])
     if uploaded_file is not None:
-        st.write("This calculator estimates filament usage and cost from file volume and your print parameters.")
+        st.write("This calculator estimates filament use/weight and cost based on STL model volume and your print parameters.")
 
-        file_type = uploaded_file.name.lower().split(".")[-1]
-        # UI for parameters
+        # Parameters for calculations
         layer_height = st.number_input("Layer height (mm)", min_value=0.05, max_value=1.0, value=0.2)
         infill = st.slider("Infill percentage", min_value=0, max_value=100, value=20)
         shell_count = st.number_input("Number of solid perimeters/shells", min_value=1, value=2)
@@ -57,19 +42,10 @@ def stl_3mf_calculator():
         print_time = st.number_input("Estimated print time (hours)", min_value=0.0)
         electricity_cost = st.number_input("Electricity cost per hour (optional)", min_value=0.0, value=0.0)
 
-        if st.button("Estimate Cost (from 3D file)"):
-            if file_type == "stl":
-                volume_mm3 = get_stl_volume(uploaded_file)
-                st.info("STL model detected.")
-            elif file_type == "3mf":
-                volume_mm3 = get_3mf_volume(uploaded_file)
-                st.info("3MF model detected.")
-            else:
-                st.error("Unknown file type.")
-                return
-
+        if st.button("Estimate Cost (from STL)"):
+            volume_mm3 = get_stl_volume(uploaded_file)
             volume_cm3 = volume_mm3 / 1000.0
-            shell_vol_factor = 1 + (shell_count * 0.05)  # simple shell estimate
+            shell_vol_factor = 1 + (shell_count * 0.05)  # crude shell estimate
             infill_ratio = infill / 100.0
             estimated_volume_cm3 = volume_cm3 * (infill_ratio + (1-infill_ratio)*0.25) * shell_vol_factor
 
@@ -84,11 +60,11 @@ def stl_3mf_calculator():
 
 def main():
     st.title("3D Printer Cost Calculator")
-    option = st.radio("Select Calculation Mode", ["Manual Input", "3D File (STL/3MF) Upload"])
+    option = st.radio("Select Calculation Mode", ["Manual Input", "STL File Upload"])
     if option == "Manual Input":
         manual_calculator()
     else:
-        stl_3mf_calculator()
+        stl_calculator()
 
 if __name__ == '__main__':
     main()
